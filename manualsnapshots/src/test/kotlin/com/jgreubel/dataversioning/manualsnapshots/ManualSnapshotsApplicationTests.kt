@@ -1,10 +1,10 @@
-package com.jgreubel.dataversioning.manualjpa
+package com.jgreubel.dataversioning.manualsnapshots
 
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.SpringBootTest
 
 @SpringBootTest
-class ManualjpaApplicationTests {
+class ManualSnapshotsApplicationTests {
 
 	@Test
 	fun contextLoads() {

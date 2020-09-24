@@ -1,4 +1,4 @@
 rootProject.name = "dataversioning"
 
-include("manualjpa")
+include("manualsnapshots")
 include("envers")

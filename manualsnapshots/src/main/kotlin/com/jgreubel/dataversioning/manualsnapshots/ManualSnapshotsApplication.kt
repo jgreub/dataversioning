@@ -1,11 +1,11 @@
-package com.jgreubel.dataversioning.manualjpa
+package com.jgreubel.dataversioning.manualsnapshots
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 
 @SpringBootApplication
-class ManualjpaApplication
+class ManualSnapshotsApplication
 
 fun main(args: Array<String>) {
-	runApplication<ManualjpaApplication>(*args)
+	runApplication<ManualSnapshotsApplication>(*args)
 }

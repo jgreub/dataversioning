@@ -9,6 +9,24 @@ import javax.persistence.*
 /** Post Stuff **/
 /****************/
 
+// *** Business Layer *** //
+
+data class Post(
+    val id: Long,
+    val content: String,
+    val comments: List<Comment>
+)
+
+interface PostRepository {
+    fun findOne(id: Long): Post
+    fun create(content: String): Post
+    fun edit(id: Long, newContent: String): Post
+    fun addComment(id: Long, comment: Comment): Post
+    fun delete(id: Long)
+}
+
+// *** Data Layer *** //
+
 @Entity
 data class PostIdentifier(
     @Id
@@ -17,12 +35,12 @@ data class PostIdentifier(
 )
 
 @Entity
-data class PostVersion(
+data class PostSnapshot(
     @Id
     @GeneratedValue
     val versionId: Long,
     val content: String,
-    @OneToMany //TODO: Hmm... Maybe make it a ManyToMany?
+    @ManyToMany
     val commentIdentifiers: List<CommentIdentifier>,
 
     /** Audit Properties **/
@@ -34,39 +52,32 @@ data class PostVersion(
 )
 
 interface PostIdentifierRepository : JpaRepository<PostIdentifier, Long>
-interface PostVersionRepository : JpaRepository<PostVersion, Long> {
-    fun findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id: Long): PostVersion?
+interface PostSnapshotRepository : JpaRepository<PostSnapshot, Long> {
+    fun findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id: Long): PostSnapshot?
 }
 
-// Would be in business layer
-data class Post(
-    val id: Long,
-    val content: String,
-    val comments: List<Comment>
-)
-
 @Component
-class PostService(
+class PostSnapshotService(
     private val postIdentifierRepository: PostIdentifierRepository,
-    private val postVersionRepository: PostVersionRepository,
-    private val commentService: CommentService,
+    private val postSnapshotRepository: PostSnapshotRepository,
+    private val commentSnapshotService: CommentSnapshotService,
     private val userService: UserService
-) {
+): PostRepository {
 
-    fun findOne(id: Long): Post {
-        val latestVersion = postVersionRepository.findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
+    override fun findOne(id: Long): Post {
+        val latestVersion = postSnapshotRepository.findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
             ?: throw RuntimeException("Not found")
 
         return convertToPost(latestVersion)
     }
 
-    fun create(content: String): Post {
+    override fun create(content: String): Post {
         val postIdentifier = postIdentifierRepository.save(
             PostIdentifier(id = 0)
         )
 
-        val postVersion = postVersionRepository.save(
-            PostVersion(
+        val postVersion = postSnapshotRepository.save(
+            PostSnapshot(
                 versionId = 0,
                 content = content,
                 commentIdentifiers = listOf(),
@@ -81,12 +92,12 @@ class PostService(
         return convertToPost(postVersion)
     }
 
-    fun edit(id: Long, newContent: String): Post {
-        val latestVersion = postVersionRepository.findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
+    override fun edit(id: Long, newContent: String): Post {
+        val latestVersion = postSnapshotRepository.findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
             ?: throw RuntimeException("Not found")
 
-        val newVersion = postVersionRepository.save(
-            PostVersion(
+        val newVersion = postSnapshotRepository.save(
+            PostSnapshot(
                 versionId = 0,
                 content = newContent,
                 // JPA Weirdness - Notice the .toList() required for Hibernate
@@ -102,15 +113,15 @@ class PostService(
         return convertToPost(newVersion)
     }
 
-    fun addComment(id: Long, comment: Comment): Post { // TODO: What should API be?
-        val latestVersion = postVersionRepository.findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
+    override fun addComment(id: Long, comment: Comment): Post {
+        val latestVersion = postSnapshotRepository.findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
             ?: throw RuntimeException("Not found")
 
         val newCommentIdentifiers =
             latestVersion.commentIdentifiers + CommentIdentifier(id = comment.id)
 
-        val newVersion = postVersionRepository.save(
-            PostVersion(
+        val newVersion = postSnapshotRepository.save(
+            PostSnapshot(
                 versionId = 0,
                 content = latestVersion.content,
                 commentIdentifiers = newCommentIdentifiers,
@@ -125,12 +136,12 @@ class PostService(
         return convertToPost(newVersion)
     }
 
-    fun delete(id: Long) {
-        val latestVersion = postVersionRepository.findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
+    override fun delete(id: Long) {
+        val latestVersion = postSnapshotRepository.findTop1ByPostIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
             ?: throw RuntimeException("Not found")
 
-        postVersionRepository.save(
-            PostVersion(
+        postSnapshotRepository.save(
+            PostSnapshot(
                 versionId = 0,
                 content = latestVersion.content,
                 // JPA Weirdness - Notice the .toList() required for Hibernate
@@ -146,12 +157,12 @@ class PostService(
 
     // Helpers
 
-    private fun convertToPost(postVersion: PostVersion): Post {
+    private fun convertToPost(postSnapshot: PostSnapshot): Post {
         return Post(
-            id = postVersion.postIdentifier.id,
-            content = postVersion.content,
-            comments = postVersion.commentIdentifiers.map {
-                commentService.findOne(it.id)
+            id = postSnapshot.postIdentifier.id,
+            content = postSnapshot.content,
+            comments = postSnapshot.commentIdentifiers.map {
+                commentSnapshotService.findOne(it.id)
             }
         )
     }
@@ -162,6 +173,22 @@ class PostService(
 /** Comment Stuff **/
 /*******************/
 
+// *** Business Layer *** //
+
+data class Comment(
+    val id: Long,
+    val content: String
+)
+
+interface CommentRepository {
+    fun findOne(id: Long): Comment
+    fun create(content: String): Comment
+    fun edit(id: Long, newContent: String): Comment
+    fun delete(id: Long)
+}
+
+// *** Data Layer *** //
+
 @Entity
 data class CommentIdentifier(
     @Id
@@ -170,7 +197,7 @@ data class CommentIdentifier(
 )
 
 @Entity
-data class CommentVersion(
+data class CommentSnapshot(
     @Id
     @GeneratedValue
     val versionId: Long,
@@ -185,37 +212,31 @@ data class CommentVersion(
 )
 
 interface CommentIdentifierRepository : JpaRepository<CommentIdentifier, Long>
-interface CommentVersionRepository : JpaRepository<CommentVersion, Long> {
-    fun findTop1ByCommentIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id: Long): CommentVersion?
+interface CommentSnapshotRepository : JpaRepository<CommentSnapshot, Long> {
+    fun findTop1ByCommentIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id: Long): CommentSnapshot?
 }
 
-// Would be in business layer
-data class Comment(
-    val id: Long,
-    val content: String
-)
-
 @Component
-class CommentService(
+class CommentSnapshotService(
     private val commentIdentifierRepository: CommentIdentifierRepository,
-    private val commentVersionRepository: CommentVersionRepository,
+    private val commentSnapshotRepository: CommentSnapshotRepository,
     private val userService: UserService
-) {
+): CommentRepository {
 
-    fun findOne(id: Long): Comment {
-        val latestVersion = commentVersionRepository.findTop1ByCommentIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
+    override fun findOne(id: Long): Comment {
+        val latestVersion = commentSnapshotRepository.findTop1ByCommentIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
             ?: throw RuntimeException("Not found")
 
         return convertToComment(latestVersion)
     }
 
-    fun create(content: String): Comment {
+    override fun create(content: String): Comment {
         val commentIdentifier = commentIdentifierRepository.save(
             CommentIdentifier(id = 0)
         )
 
-        val commentVersion = commentVersionRepository.save(
-            CommentVersion(
+        val commentVersion = commentSnapshotRepository.save(
+            CommentSnapshot(
                 versionId = 0,
                 content = content,
                 /** Audit Properties **/
@@ -229,12 +250,48 @@ class CommentService(
         return convertToComment(commentVersion)
     }
 
+    override fun edit(id: Long, newContent: String): Comment {
+        val latestVersion = commentSnapshotRepository.findTop1ByCommentIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
+            ?: throw RuntimeException("Not found")
+
+        val newVersion = commentSnapshotRepository.save(
+            CommentSnapshot(
+                versionId = 0,
+                content = newContent,
+                /** Audit Properties **/
+                commentIdentifier = latestVersion.commentIdentifier,
+                createdDateTime = Instant.now(),
+                createdBy = userService.getCurrentUsername(),
+                deleted = false
+            )
+        )
+
+        return convertToComment(newVersion)
+    }
+
+    override fun delete(id: Long) {
+        val latestVersion = commentSnapshotRepository.findTop1ByCommentIdentifierIdAndDeletedFalseOrderByCreatedDateTimeDesc(id)
+            ?: throw RuntimeException("Not found")
+
+        commentSnapshotRepository.save(
+            CommentSnapshot(
+                versionId = 0,
+                content = latestVersion.content,
+                /** Audit Properties **/
+                commentIdentifier = latestVersion.commentIdentifier,
+                createdDateTime = Instant.now(),
+                createdBy = userService.getCurrentUsername(),
+                deleted = true
+            )
+        )
+    }
+
     // Helpers
 
-    private fun convertToComment(commentVersion: CommentVersion): Comment {
+    private fun convertToComment(commentSnapshot: CommentSnapshot): Comment {
         return Comment(
-            id = commentVersion.commentIdentifier.id,
-            content = commentVersion.content
+            id = commentSnapshot.commentIdentifier.id,
+            content = commentSnapshot.content
         )
     }
 

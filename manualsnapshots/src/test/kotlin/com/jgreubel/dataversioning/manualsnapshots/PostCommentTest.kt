@@ -11,68 +11,30 @@ import org.springframework.context.annotation.Import
 class PostCommentTest {
 
     @Autowired
-    lateinit var postSnapshotService: PostSnapshotService
+    lateinit var postRepository: PostRepository
 
     @Autowired
-    lateinit var postIdentifierRepository: PostIdentifierRepository
-
-    @Autowired
-    lateinit var postSnapshotRepository: PostSnapshotRepository
-
-    @Autowired
-    lateinit var commentSnapshotService: CommentSnapshotService
-
-    @Autowired
-    lateinit var commentIdentifierRepository: CommentIdentifierRepository
-
-    @Autowired
-    lateinit var commentSnapshotRepository: CommentSnapshotRepository
+    lateinit var commentRepository: CommentRepository
 
     @Test
     fun `post comment journey`() {
-        val post = postSnapshotService.create("My first post")
+        val post = postRepository.create("My first post")
+        postRepository.edit(post.id, "My first post with an edit")
+        postRepository.edit(post.id, "My first post with a second edit")
+        val comment = commentRepository.create("Your post stinks!")
+        postRepository.addComment(post.id, comment)
+        commentRepository.edit(comment.id, "Woops, I meant your post rocks!")
 
-        assertThat(postIdentifierRepository.count()).isEqualTo(1)
-        assertThat(postSnapshotRepository.count()).isEqualTo(1)
+        val allPosts = postRepository.findAll()
+        assertThat(allPosts.size).isEqualTo(1)
 
-        val updatedPost = postSnapshotService.edit(post.id, "My first post, with an edit")
+        val postVersions = postRepository.findAllVersions(post.id)
+        assertThat(postVersions.size).isEqualTo(4)
 
-        assertThat(postIdentifierRepository.count()).isEqualTo(1)
-        assertThat(postSnapshotRepository.count()).isEqualTo(2)
+        val allComments = commentRepository.findAll()
+        assertThat(allComments.size).isEqualTo(1)
 
-        postSnapshotService.edit(updatedPost.id, "My first post, with a second edit")
-
-        assertThat(postIdentifierRepository.count()).isEqualTo(1)
-        assertThat(postSnapshotRepository.count()).isEqualTo(3)
-
-        val comment = commentSnapshotService.create("Your post stinks!")
-        postSnapshotService.addComment(updatedPost.id, comment)
-
-        assertThat(postIdentifierRepository.count()).isEqualTo(1)
-        assertThat(postSnapshotRepository.count()).isEqualTo(4)
-
-        assertThat(commentIdentifierRepository.count()).isEqualTo(1)
-        assertThat(commentSnapshotRepository.count()).isEqualTo(1)
-
-        commentSnapshotService.edit(comment.id, "Woops, I meant your post rocks!")
-
-        assertThat(postIdentifierRepository.count()).isEqualTo(1)
-        assertThat(postSnapshotRepository.count()).isEqualTo(4)
-
-        assertThat(commentIdentifierRepository.count()).isEqualTo(1)
-        assertThat(commentSnapshotRepository.count()).isEqualTo(2)
-
-        val foundPost = postSnapshotService.findOne(updatedPost.id)
-
-        assertThat(foundPost.comments.size).isEqualTo(1)
-        assertThat(foundPost.comments[0].content).isEqualTo("Woops, I meant your post rocks!")
-
-        postSnapshotService.delete(foundPost.id)
-
-        assertThat(postIdentifierRepository.count()).isEqualTo(1)
-        assertThat(postSnapshotRepository.count()).isEqualTo(5)
-
-        assertThat(commentIdentifierRepository.count()).isEqualTo(1)
-        assertThat(commentSnapshotRepository.count()).isEqualTo(2)
+        val commentVersions = commentRepository.findAllVersions(comment.id)
+        assertThat(commentVersions.size).isEqualTo(2)
     }
 }
